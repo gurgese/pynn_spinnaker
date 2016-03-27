@@ -66,6 +66,44 @@ class WeightRange(object):
         return (16 - int(max_msb))
 
 
+# --------------------------------------------------------------------------
+# SynapseTypeDict
+# --------------------------------------------------------------------------
+class SynapseTypeDict(defaultdict):
+    def __getitem__(self, synapse_type):
+        return super(SynapseTypeDict, self).__getitem__(self._hash(synapse_type))
+
+    def __setitem__(self, synapse_type, val):
+        return super(SynapseTypeDict, self).__setitem__(self._hash(synapse_type), val)
+
+    def _hash(self, synapse_type):
+        print synapse_type
+        # If synapse type has a list of param names to use for hash
+        if hasattr(synapse_type[0], "hash_param_names"):
+            # Start tuple with class type - various STDP components
+            # are likely to have similarly named parameters
+            # with simular values so this is important 1st check
+            comp = (synapse_type[1], synapse_type[0].__class__,)
+
+            # Loop through names of parameters which
+            # much match for objects to be equal
+            for p in synapse_type[0].hash_param_names:
+                # Extract named parameter lazy array from parameter
+                # space and check that it's homogeneous
+                param_array = synapse_type[0].parameter_space[p]
+                assert param_array.is_homogeneous
+
+                # Set it's shape to 1
+                # **NOTE** for homogeneous arrays this is a)free and b)works
+                param_array.shape = 1
+
+                # Evaluate and simplify
+                # **NOTE** for homogeneous arrays this always returns a scalar
+                comp += (param_array.evaluate(simplify=True),)
+            return hash(comp)
+        # Otherwise
+        else:
+            return hash((synapse_type[1],) + synapse_type[0].hash_properties)
 
 # Round a j constraint to the lowest power-of-two
 # multiple of the minium j constraint
@@ -141,7 +179,7 @@ class Population(common.Population):
         # Dictionary mapping pre-synaptic populations to
         # incoming projections, subdivided by synapse type
         # {synapse_cluster_type: {pynn_population: [pynn_projection]}}
-        self.incoming_projections = defaultdict(lambda: defaultdict(list))
+        self.incoming_projections = SynapseTypeDict(lambda: defaultdict(list))
 
         # List of outgoing projections from this population
         # [pynn_projection]
